@@ -141,7 +141,10 @@ In the Tailscale admin console, go to **Settings** then **Keys** then
   accumulating dead entries.
 - Set an expiry you are comfortable with.
 
-Copy the key. It starts with `tskey-auth-`.
+Copy the key. It starts with `tskey-auth-`. The same **Keys** page also offers
+API access tokens, which start with `tskey-api-` and look close enough to grab
+by mistake. They cannot authenticate a machine. If you use one you get
+`backend error: invalid key`, which does not tell you that is what happened.
 
 ### 3. Put the key in your shell
 
@@ -151,7 +154,8 @@ On your laptop, in `~/.zshrc` or `~/.bashrc`:
 export TSKEY=tskey-auth-xxxxxxxxxxxx
 ```
 
-Open a new terminal so it takes effect.
+Open a new terminal so it takes effect. This is for your laptop only.
+SSH does not send `TSKEY` to the server.
 
 ### 4. Install Tailscale on your laptop
 
@@ -164,17 +168,25 @@ the key above.
 
 ## Provisioning a server
 
-Do this for each new machine.
+Do this for each new machine. The last word is the hostname on your
+network. Pick something short. `work`, `gpu1`, `build`.
 
-SSH into it however your provider tells you to, then run:
+**From the server** (after you SSH in), paste the key itself. `$TSKEY` is
+empty here even if it is set on your laptop:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/giannisp09/herdr-tailscale-setup/main/bootstrap.sh \
-  | TSKEY=$TSKEY bash -s work
+  | TSKEY='tskey-auth-xxxxxxxxxxxx' bash -s work
 ```
 
-The last word is the name the machine will have on your network. Pick
-something short. `work`, `gpu1`, `build`.
+**From the laptop**, so `$TSKEY` expands before SSH:
+
+```bash
+ssh user@host "curl -fsSL https://raw.githubusercontent.com/giannisp09/herdr-tailscale-setup/main/bootstrap.sh | TSKEY='$TSKEY' bash -s work"
+```
+
+If you sourced `agentbox.sh`, `bootstrap-cmd work` copies the first form
+with the key already filled in. Paste that on the server.
 
 The script installs Tailscale, herdr, git, Node, and Claude Code, then prints
 a summary. It is safe to run twice.
@@ -266,6 +278,13 @@ straight to that pane.
 
 ## Troubleshooting
 
+**`TSKEY: set TSKEY to a Tailscale reusable auth key`**
+
+The bootstrap script ran with an empty key. That is what happens if you
+SSH in and run `TSKEY=$TSKEY`: the variable lives on your laptop, not on
+the server. Paste the key on the command line, or run the `ssh user@host
+"..."` form from the laptop so `$TSKEY` expands locally.
+
 **`herdr: command not found` over SSH, but it works when you log in normally**
 
 Ubuntu's `.bashrc` exits early for non-interactive shells, so anything at the
@@ -295,10 +314,56 @@ ssh -i ~/.ssh/yourkey -o IdentitiesOnly=yes user@host
 The package installer already started it as a system service. You do not need
 to start it yourself. Check with `systemctl status tailscaled`.
 
-**`unable to validate API key`**
+**`backend error: invalid key: API key tskey-... not valid`**
 
-You pasted a placeholder instead of a real key, or the key has expired.
-Generate a new one in the Tailscale admin console.
+Tailscale is installed and running fine. The control plane rejected your key.
+"API key" in that message is misleading; it means the auth key. Work through
+these in order:
+
+1. **Wrong kind of key.** Tailscale prefixes say what a key is:
+   `tskey-auth-` is an auth key and `tskey-client-` an OAuth client secret,
+   both of which work here. `tskey-api-` is an API access token and will not
+   authenticate a machine, no matter how valid it is.
+   See [key prefixes](https://tailscale.com/docs/reference/key-prefixes).
+2. **Placeholder.** You copied `tskey-auth-xxxxxxxxxxxx` out of this README.
+3. **Already used.** A key that is not marked **Reusable** works exactly once.
+   Check it at https://login.tailscale.com/admin/settings/keys — the page shows
+   reusable, expiry, and revoked status for every key.
+4. **Expired or revoked.** Auth keys last 90 days by default and can be set as
+   low as 1. Generate a fresh one.
+5. **Stale node identity.** If the machine was registered before and then
+   deleted in the admin console, the old node key is still sitting in
+   `/var/lib/tailscale/tailscaled.state` and registration fails even with a
+   brand new auth key
+   ([tailscale#9382](https://github.com/tailscale/tailscale/issues/9382)).
+   Clear it with `sudo tailscale logout`, then run the bootstrap again.
+
+**`changing settings via 'tailscale up' requires mentioning all non-default flags`**
+
+You already ran `tailscale up` with flags once. Tailscale persists those
+preferences even when the login itself failed, so a bare `tailscale up`
+afterwards refuses to silently drop them. Re-run with the flags spelled out:
+
+```bash
+sudo tailscale up --reset --authkey='tskey-auth-...' --ssh --hostname=work
+```
+
+`--reset` returns everything you did not name to its default
+([tailscale up reference](https://tailscale.com/kb/1241/tailscale-up)), which
+is why the bootstrap script passes it. Without `--reset` the script would not
+survive its own second run.
+
+**`failed to connect to local tailscaled`**
+
+The daemon is not running. Installing the package enables the systemd unit but
+does not start it when systemd is not PID 1, which is the normal situation in a
+container (Docker, Vast.ai, RunPod). Note that `/dev/net/tun` can exist in such
+a container while the daemon is still down, so its presence proves nothing. The
+bootstrap script probes the daemon, tries systemd, and otherwise starts
+`tailscaled --tun=userspace-networking` itself.
+
+That last case is not supervised: if the container restarts, run the bootstrap
+script again to bring the daemon back.
 
 **Agent hits a usage limit overnight**
 
