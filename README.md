@@ -212,14 +212,24 @@ a summary. It is safe to run twice.
 From your laptop:
 
 ```bash
-ssh work
+ssh root@work
 ```
 
-It should just work. Tailscale handles the authentication, so there is no key
-file to specify and no password.
+Tailscale handles the authentication, so there is no key file to specify and
+no password.
+
+Spell out the username. A bare `ssh work` connects as your **laptop's**
+username, which usually does not exist on the server — most container hosts
+(Vast.ai, RunPod) give you root and nothing else. Use whatever account the box
+actually has. The default tailnet policy permits root; if you have edited your
+policy file, `root` must be in the `users` list of its `ssh` rule.
+
+The first connection may open a browser to re-authenticate. That is the
+default policy's `check` action, not a failure.
 
 If the name does not resolve, enable **MagicDNS** in the Tailscale admin
 console under **DNS**, or use the IP address the bootstrap script printed.
+SSH works over the raw `100.x` address either way.
 
 ### Sign in to Claude Code
 
@@ -237,7 +247,7 @@ This binds the server to your subscription. You do this once per server.
 From your laptop:
 
 ```bash
-herdr --remote work
+herdr --remote root@work
 ```
 
 Your terminal is now showing the herdr session running on the server.
