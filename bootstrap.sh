@@ -138,7 +138,11 @@ command -v herdr >/dev/null || curl -fsSL https://herdr.dev/install.sh | sh
 # ---------------------------------------------------------------- node
 log "node"
 if ! command -v node >/dev/null; then
-  curl -fsSL https://deb.nodesource.com/setup_22.x | $SUDO -E bash -
+  # -E is a flag of sudo, not of bash, so it cannot be glued to $SUDO. As root
+  # $SUDO is empty and this line collapsed to "-E bash -", which is not a
+  # command: exit 127, and set -e killed the script here, before Claude Code
+  # was ever installed. Pass -E only when there is a sudo to pass it to.
+  curl -fsSL https://deb.nodesource.com/setup_22.x | $SUDO ${SUDO:+-E} bash -
   $SUDO apt-get install -y -qq nodejs
 fi
 
@@ -173,8 +177,21 @@ fi
 log "done"
 echo "hostname : $HOST_NAME"
 echo "tailnet  : $(tailscale ip -4 || echo unavailable)"
-echo "herdr    : $(herdr --version 2>/dev/null || echo missing)"
-echo "claude   : $(claude --version 2>/dev/null || echo missing)"
+echo "herdr    : $(herdr --version 2>/dev/null || echo MISSING)"
+echo "node     : $(node --version 2>/dev/null || echo MISSING)"
+echo "claude   : $(claude --version 2>/dev/null || echo MISSING)"
+
+# Reaching this line at all means the script did not abort, but a tool can
+# still be absent because its own installer failed quietly. Say so here rather
+# than letting it surface as "command not found" days later.
+missing=""
+for t in tailscale herdr node claude; do
+  command -v "$t" >/dev/null || missing="$missing $t"
+done
+if [ -n "$missing" ]; then
+  echo
+  echo "WARNING: not installed:$missing" >&2
+fi
 echo
 echo "add this deploy key to github if this box needs to push:"
 cat "$HOME/.ssh/id_ed25519.pub"
