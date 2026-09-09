@@ -205,6 +205,7 @@ a summary. It is safe to run twice.
 | `TSKEY` | **Required.** Your Tailscale auth key. |
 | `GIT_NAME` | Sets `git config --global user.name` |
 | `GIT_EMAIL` | Sets `git config --global user.email` |
+| `CLAUDE_CODE_OAUTH_TOKEN` | A long-lived subscription token. Set this and the box needs no interactive login at all. Make one on your laptop with `claude setup-token`. |
 | `ANTHROPIC_API_KEY` | Only if you are paying per token. **Leave this unset if you have a Claude subscription**, otherwise you will be billed twice. |
 
 ## First connection
@@ -233,14 +234,32 @@ SSH works over the raw `100.x` address either way.
 
 ### Sign in to Claude Code
 
-On the server:
+Best done once, on your laptop, so no server ever needs a browser:
+
+```bash
+claude setup-token
+```
+
+That prints a long-lived token. Pass it to every box you provision:
+
+```bash
+curl -fsSL <raw-url> | \
+  TSKEY='tskey-auth-...' CLAUDE_CODE_OAUTH_TOKEN='...' bash -s work
+```
+
+The box comes up already signed in, and this step disappears.
+
+Otherwise, log in on the server itself:
 
 ```bash
 claude
 ```
 
-It prints a URL. Open it on your laptop, sign in, and paste the code back.
-This binds the server to your subscription. You do this once per server.
+It prints a URL. **Press `c` to copy it** rather than selecting it with the
+mouse. The URL is long, it wraps across several lines in an SSH terminal, and a
+hand-made selection usually stops at a line break — which silently drops
+`code_challenge`, the last parameter. Open it on your laptop, sign in, and
+paste the code back. Once per server.
 
 ## Daily use
 
@@ -374,6 +393,14 @@ confirm the key reached the control plane intact.
    brand new auth key
    ([tailscale#9382](https://github.com/tailscale/tailscale/issues/9382)).
    Clear it with `sudo tailscale logout`, then run the bootstrap again.
+
+**`Invalid OAuth Request` / `Missing code_challenge parameter`**
+
+The OAuth URL you opened was truncated. `code_challenge` is the last parameter
+on a URL long enough to wrap over several lines in an SSH terminal, so a
+selection that stops at a line break drops exactly that. Press `c` at the login
+prompt to copy the whole thing, or avoid the browser flow entirely by passing
+`CLAUDE_CODE_OAUTH_TOKEN` to the bootstrap (see **Sign in to Claude Code**).
 
 **`changing settings via 'tailscale up' requires mentioning all non-default flags`**
 

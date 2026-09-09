@@ -21,9 +21,18 @@ log() { printf '\n== %s\n' "$1"; }
 # appended to the end never runs under `ssh host 'cmd'`. herdr's own remote
 # bootstrap uses exactly that kind of shell, so this line must be at the top.
 log "PATH"
-if ! head -1 "$HOME/.bashrc" | grep -q '.local/bin'; then
-  sed -i '1i export PATH="$HOME/.local/bin:$PATH"' "$HOME/.bashrc"
-fi
+# Put a line at the very top of .bashrc, once. The top is what matters:
+# Ubuntu's .bashrc returns early for non-interactive shells, so anything
+# appended to the end never runs under `ssh host 'cmd'` -- which is exactly how
+# herdr --remote and the worktrees helper reach this box.
+bashrc_prepend() {
+  touch "$HOME/.bashrc"
+  grep -qxF "$1" "$HOME/.bashrc" && return 0
+  { printf '%s\n' "$1"; cat "$HOME/.bashrc"; } > "$HOME/.bashrc.new"
+  cat "$HOME/.bashrc.new" > "$HOME/.bashrc"   # in place, so perms and owner survive
+  rm -f "$HOME/.bashrc.new"
+}
+bashrc_prepend 'export PATH="$HOME/.local/bin:$PATH"'
 export PATH="$HOME/.local/bin:$PATH"
 
 # ---------------------------------------------------------------- base
@@ -150,9 +159,22 @@ fi
 log "claude code"
 command -v claude >/dev/null || curl -fsSL https://claude.ai/install.sh | bash
 
+# A long-lived subscription token, made once on your laptop with
+# `claude setup-token`. Passing it here is what stops every new box needing an
+# interactive browser login, which is awkward over SSH: the OAuth URL wraps
+# across lines and copying it by hand truncates the code_challenge parameter
+# off the end, giving "Invalid OAuth Request: Missing code_challenge parameter".
+if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+  bashrc_prepend "export CLAUDE_CODE_OAUTH_TOKEN=$CLAUDE_CODE_OAUTH_TOKEN"
+fi
+
 if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
-  grep -q ANTHROPIC_API_KEY "$HOME/.bashrc" || \
-    echo "export ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY" >> "$HOME/.bashrc"
+  bashrc_prepend "export ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY"
+fi
+
+if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+  echo "WARNING: both CLAUDE_CODE_OAUTH_TOKEN and ANTHROPIC_API_KEY are set." >&2
+  echo "The API key bills per token on top of your subscription. Pick one." >&2
 fi
 
 # ---------------------------------------------------------------- prime cli
