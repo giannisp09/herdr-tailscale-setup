@@ -7,8 +7,28 @@
 bootstrap-cmd() {
   local name="${1:-agent-box}"
   local url="https://raw.githubusercontent.com/giannisp09/herdr-tailscale-setup/main/bootstrap.sh"
-  echo "curl -fsSL $url | TSKEY=$TSKEY bash -s $name" | pbcopy
-  echo "copied to clipboard."
+  # The key is expanded into the clipboard here, not on the box, so a TSKEY
+  # that is unset or half-copied on this Mac becomes a command that looks
+  # perfectly fine and fails two minutes into the remote install. Catch it now.
+  # A whole key is tskey-auth-<keyID>-<secret>; a double-click in the admin
+  # console selects only up to the first dash and gives you the keyID alone.
+  case "${TSKEY:-}" in
+    tskey-auth-*-*|tskey-client-*-*) ;;
+    "")
+      echo "TSKEY is not set in this shell. export it first." >&2
+      return 1 ;;
+    tskey-api-*)
+      echo "TSKEY is an API access token. Machines need an auth key." >&2
+      return 1 ;;
+    *)
+      echo "TSKEY is not a whole auth key (want tskey-auth-<keyID>-<secret>)." >&2
+      echo "Got ${#TSKEY} chars starting '${TSKEY:0:12}'." >&2
+      return 1 ;;
+  esac
+  local id
+  id="$(printf %s "$TSKEY" | cut -d- -f1-3)"
+  echo "curl -fsSL $url | TSKEY='$TSKEY' bash -s $name" | pbcopy
+  echo "copied to clipboard: $name, key $id-... (${#TSKEY} chars)"
 }
 
 # Attach to a box's herdr session.

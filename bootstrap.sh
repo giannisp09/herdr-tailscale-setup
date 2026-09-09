@@ -39,18 +39,43 @@ log "tailscale"
 # OAuth client secret (both work here), tskey-api- is an API access token and
 # does not. https://tailscale.com/docs/reference/key-prefixes
 case "$TSKEY" in
-  tskey-auth-*|tskey-client-*) ;;
   tskey-api-*)
     echo "TSKEY is an API access token (tskey-api-...), not an auth key." >&2
     echo "Generate an auth key at https://login.tailscale.com/admin/settings/keys" >&2
     echo "-> Generate auth key -> tick Reusable. It starts with tskey-auth-." >&2
     exit 1 ;;
+  tskey-auth-*)
+    # A whole auth key has two segments after the prefix: it is
+    # tskey-auth-<keyID>-<secret>, e.g.
+    # tskey-auth-k123456CNTRL-abcdefghijklmnopqrstuvwxyz.
+    # Double-clicking the key in the admin console selects only as far as the
+    # next dash, so a key copied that way arrives as tskey-auth-<keyID> with
+    # the secret missing. That passes a prefix-only check, and the control
+    # plane then rejects it with "invalid key: API key ... not valid" while
+    # echoing back the short thing you actually sent.
+    case "${TSKEY#tskey-auth-}" in
+      *-*) ;;
+      *)
+        echo "TSKEY has no secret half, so it is a partial copy." >&2
+        echo "A whole key is tskey-auth-<keyID>-<secret>; you have only" >&2
+        echo "tskey-auth-<keyID> (${#TSKEY} chars total)." >&2
+        echo "Select the whole key with triple-click or select-all. A" >&2
+        echo "double-click stops at the first dash." >&2
+        exit 1 ;;
+    esac ;;
+  tskey-client-*) ;;
   *)
     echo "TSKEY does not look like a Tailscale auth key." >&2
     echo "Expected it to start with tskey-auth- (or tskey-client-)." >&2
     echo "Got ${#TSKEY} chars starting '$(printf %.12s "$TSKEY")'." >&2
     exit 1 ;;
 esac
+
+# The key ID is the middle segment and is not the secret. The admin console
+# lists keys by it, so printing it is what lets you check whether the key this
+# box is using is the key you think you pasted.
+TSKEY_ID="$(printf %s "$TSKEY" | cut -d- -f1-3)"
+echo "auth key $TSKEY_ID-... (${#TSKEY} chars)"
 
 if ! command -v tailscale >/dev/null; then
   curl -fsSL https://tailscale.com/install.sh | $SUDO sh
@@ -95,7 +120,15 @@ if ! $SUDO tailscale up --reset --authkey="$TSKEY" --ssh --hostname="$HOST_NAME"
   # https://github.com/tailscale/tailscale/issues/9382
   echo "retrying after logout to clear any stale node identity" >&2
   $SUDO tailscale logout || true
-  $SUDO tailscale up --reset --authkey="$TSKEY" --ssh --hostname="$HOST_NAME"
+  if ! $SUDO tailscale up --reset --authkey="$TSKEY" --ssh --hostname="$HOST_NAME"; then
+    echo >&2
+    echo "The control plane refused key $TSKEY_ID. That is a fact about the" >&2
+    echo "key, not about this box. Open" >&2
+    echo "  https://login.tailscale.com/admin/settings/keys" >&2
+    echo "and check that $TSKEY_ID is listed there, unexpired, not revoked," >&2
+    echo "and Reusable. A one-off key is spent by its first successful use." >&2
+    exit 1
+  fi
 fi
 
 # ---------------------------------------------------------------- herdr

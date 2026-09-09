@@ -141,10 +141,17 @@ In the Tailscale admin console, go to **Settings** then **Keys** then
   accumulating dead entries.
 - Set an expiry you are comfortable with.
 
-Copy the key. It starts with `tskey-auth-`. The same **Keys** page also offers
-API access tokens, which start with `tskey-api-` and look close enough to grab
-by mistake. They cannot authenticate a machine. If you use one you get
-`backend error: invalid key`, which does not tell you that is what happened.
+Copy the key. A whole one has three parts,
+`tskey-auth-<keyID>-<secret>`, for example
+`tskey-auth-k123456CNTRL-abcdefghijklmnopqrstuvwxyz`. **Select it with a
+triple-click or select-all, not a double-click.** A double-click stops at the
+first dash and hands you `tskey-auth-k123456CNTRL` with the secret missing,
+which looks like a key and is rejected as one.
+
+The same **Keys** page also offers API access tokens, which start with
+`tskey-api-` and look close enough to grab by mistake. They cannot authenticate
+a machine. Either mistake gives you `backend error: invalid key`, which does not
+tell you which one you made.
 
 ### 3. Put the key in your shell
 
@@ -320,18 +327,25 @@ Tailscale is installed and running fine. The control plane rejected your key.
 "API key" in that message is misleading; it means the auth key. Work through
 these in order:
 
-1. **Wrong kind of key.** Tailscale prefixes say what a key is:
+1. **Half a key.** The message echoes back the string the box actually sent.
+   If that looks shorter than the key you copied, it *is* shorter: a whole auth
+   key is `tskey-auth-<keyID>-<secret>` and a double-click in the admin console
+   selects only up to the first dash, giving you the keyID with no secret.
+   Re-copy with a triple-click. The bootstrap now refuses a key with no secret
+   half before it installs anything, so if it got as far as `tailscale up`,
+   your key had both parts and the cause is one of the below.
+2. **Wrong kind of key.** Tailscale prefixes say what a key is:
    `tskey-auth-` is an auth key and `tskey-client-` an OAuth client secret,
    both of which work here. `tskey-api-` is an API access token and will not
    authenticate a machine, no matter how valid it is.
    See [key prefixes](https://tailscale.com/docs/reference/key-prefixes).
-2. **Placeholder.** You copied `tskey-auth-xxxxxxxxxxxx` out of this README.
-3. **Already used.** A key that is not marked **Reusable** works exactly once.
+3. **Placeholder.** You copied `tskey-auth-xxxxxxxxxxxx` out of this README.
+4. **Already used.** A key that is not marked **Reusable** works exactly once.
    Check it at https://login.tailscale.com/admin/settings/keys — the page shows
    reusable, expiry, and revoked status for every key.
-4. **Expired or revoked.** Auth keys last 90 days by default and can be set as
+5. **Expired or revoked.** Auth keys last 90 days by default and can be set as
    low as 1. Generate a fresh one.
-5. **Stale node identity.** If the machine was registered before and then
+6. **Stale node identity.** If the machine was registered before and then
    deleted in the admin console, the old node key is still sitting in
    `/var/lib/tailscale/tailscaled.state` and registration fails even with a
    brand new auth key
