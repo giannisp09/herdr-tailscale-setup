@@ -350,7 +350,12 @@ confirm the key reached the control plane intact.
    only up to the first dash and gives you the keyID with no secret. The
    bootstrap now refuses both before it installs anything, so if it reached
    `tailscale up` your key was whole.
-4. **Already used.** A key that is not marked **Reusable** works exactly once.
+4. **Already used.** A key that is not marked **Reusable** works exactly once,
+   and Tailscale revokes it the instant it succeeds. The Keys page says
+   `You don't have any valid auth keys` with the spent one filed under
+   `1 recently invalidated auth key`, type **Single-use** — note that it can
+   sit there with months of expiry left and still be dead. Nothing you do on
+   the box recovers it; generate a new key and tick **Reusable**.
 5. **Expired or revoked.** Auth keys last 90 days by default and can be set as
    low as 1. Generate a fresh one.
 6. **Stale node identity.** If the machine was registered before and then
