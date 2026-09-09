@@ -327,22 +327,30 @@ Tailscale is installed and running fine. The control plane rejected your key.
 "API key" in that message is misleading; it means the auth key. Work through
 these in order:
 
-1. **Half a key.** The message echoes back the string the box actually sent.
-   If that looks shorter than the key you copied, it *is* shorter: a whole auth
-   key is `tskey-auth-<keyID>-<secret>` and a double-click in the admin console
-   selects only up to the first dash, giving you the keyID with no secret.
-   Re-copy with a triple-click. The bootstrap now refuses a key with no secret
-   half before it installs anything, so if it got as far as `tailscale up`,
-   your key had both parts and the cause is one of the below.
+The value in that message is shorter than your key because it is the **key ID**
+— the middle segment of `tskey-auth-<keyID>-<secret>` — not a truncated key and
+not your secret. That makes it the thing to search for. The bootstrap prints the
+same ID when it starts (`auth key tskey-auth-k123456CNTRL-...`), so you can
+confirm the key reached the control plane intact.
+
+1. **Find that ID on the Keys page.** Open
+   https://login.tailscale.com/admin/settings/keys and look for it.
+   - **Not there** — the key was deleted, or you are looking at a different
+     tailnet. Check the account switcher at the top left; keys do not work
+     across tailnets.
+   - **There** — the row shows expiry, reusable, and whether it has been used.
+     One of those is your answer.
 2. **Wrong kind of key.** Tailscale prefixes say what a key is:
    `tskey-auth-` is an auth key and `tskey-client-` an OAuth client secret,
    both of which work here. `tskey-api-` is an API access token and will not
    authenticate a machine, no matter how valid it is.
    See [key prefixes](https://tailscale.com/docs/reference/key-prefixes).
-3. **Placeholder.** You copied `tskey-auth-xxxxxxxxxxxx` out of this README.
+3. **Placeholder or half a key.** You copied `tskey-auth-xxxxxxxxxxxx` out of
+   this README, or double-clicked the key in the admin console, which selects
+   only up to the first dash and gives you the keyID with no secret. The
+   bootstrap now refuses both before it installs anything, so if it reached
+   `tailscale up` your key was whole.
 4. **Already used.** A key that is not marked **Reusable** works exactly once.
-   Check it at https://login.tailscale.com/admin/settings/keys — the page shows
-   reusable, expiry, and revoked status for every key.
 5. **Expired or revoked.** Auth keys last 90 days by default and can be set as
    low as 1. Generate a fresh one.
 6. **Stale node identity.** If the machine was registered before and then
